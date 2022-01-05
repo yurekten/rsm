@@ -1,0 +1,43 @@
+version: '3.7'
+
+services:
+  db:
+    image: postgres:14.1-alpine
+    ports:
+      - 127.0.0.1:8082:5432
+    env_file: ./rsm/.env
+    volumes:
+      - ./db/db-initialize.sql:/docker-entrypoint-initdb.d/1.sql
+      - ./db/data:/var/lib/postgresql/data
+  web:
+    build: .
+    command: >
+      /bin/sh -c "
+        ./wait-for-dependencies.sh db 5432;
+        python manage.py migrate;
+        python manage.py runserver 0.0.0.0:8081;
+      "
+    env_file: ./rsm/.env
+    volumes:
+      - .:/code
+    ports:
+      - "8081:8081"
+    depends_on:
+      - db
+      - redis
+  redis:
+    image: "redis:alpine"
+  celery_worker:
+    build: .
+    command: >
+      /bin/sh -c "
+        ./wait-for-dependencies.sh db 5432;
+        celery -A rsm worker --loglevel=info
+      "
+    env_file: ./rsm/.env
+    volumes:
+      - .:/code
+    depends_on:
+      - db
+      - web
+      - redis
